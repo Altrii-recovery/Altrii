@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Altrii Recovery - Digital Wellness Dashboard</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Custom styles for enhanced UX */
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card {
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .timer-active {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .hidden { display: none; }
+        .show { display: block; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Login Section -->
+    <div id="login-section" class="min-h-screen flex items-center justify-center gradient-bg">
+        <div class="max-w-md w-full mx-4">
+            <div class="card rounded-lg shadow-xl p-8">
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold text-gray-900">Welcome Back</h2>
+                    <p class="text-gray-600 mt-2">Sign in to your Altrii Recovery account</p>
+                </div>
+                
+                <form id="login-form">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Email</label>
+                        <input type="email" id="login-email" required 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="test@example.com">
+                    </div>
+                    
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Password</label>
+                        <input type="password" id="login-password" required
+                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                               placeholder="TestPassword123!">
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <span id="login-text">Sign In</span>
+                        <div id="login-loading" class="loading hidden"></div>
+                    </button>
+                </form>
+                
+                <div id="login-error" class="hidden mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded"></div>
+                
+                <div class="mt-6 text-center">
+                    <p class="text-sm text-gray-600">
+                        Test Account: test@example.com / TestPassword123!
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard (INCLUDES NAVIGATION) -->
+    <div id="main-dashboard" class="hidden">
+        <!-- Navigation -->
+        <nav class="gradient-bg text-white shadow-lg">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <h1 class="text-xl font-bold">🛡️ Altrii Recovery</h1>
+                        </div>
+                        <div class="ml-10">
+                            <div class="flex items-baseline space-x-4">
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20" data-section="dashboard">Dashboard</button>
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20" data-section="devices">Devices</button>
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20" data-section="blocking">Blocking</button>
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20" data-section="timers">Timers</button>
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20" data-section="subscription">Subscription</button>
+                                <!-- New Supervision and Accountability buttons -->
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20 hidden" data-section="supervision">
+                                    <i class="fas fa-shield-alt mr-1"></i>Supervision
+                                </button>
+                                <button class="nav-link px-3 py-2 rounded-md text-sm font-medium hover:bg-white hover:bg-opacity-20 hidden" data-section="accountability">
+                                    <i class="fas fa-user-friends mr-1"></i>Partners
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center">
+                        <div class="relative">
+                            <button id="user-menu-button" class="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-white hover:bg-white hover:bg-opacity-10 px-3 py-2 rounded-md transition-colors">
+                                <span class="sr-only">Open user menu</span>
+                                <div class="h-8 w-8 rounded-full bg-white bg-opacity-20 flex items-center justify-center">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <span class="ml-2" id="user-email">Loading...</span>
+                                <i class="fas fa-chevron-down ml-2 text-xs"></i>
+                            </button>
+                            
+                            <div id="user-menu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-50">
+                                <div class="px-4 py-2 text-xs text-gray-500 border-b border-gray-200">
+                                    Account Options
+                                </div>
+                                <button id="logout-button" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                    <i class="fas fa-sign-out-alt mr-2 text-red-500"></i>Sign out
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Dashboard Overview Section -->
+        <div id="dashboard-section" class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+                <p class="text-gray-600">Monitor your digital wellness journey</p>
+            </div>
+            
+            <!-- Status Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Active Timer Card -->
+                <div class="card rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-clock text-red-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Active Timer</p>
+                            <p class="text-lg font-semibold text-gray-900" id="timer-status">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Devices Card -->
+                <div class="card rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-mobile-alt text-blue-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Devices</p>
+                            <p class="text-lg font-semibold text-gray-900" id="devices-count">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Subscription Card -->
+                <div class="card rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-crown text-green-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Plan</p>
+                            <p class="text-lg font-semibold text-gray-900" id="subscription-plan">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Blocked Domains Card -->
+                <div class="card rounded-lg shadow p-6">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <div class="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                <i class="fas fa-shield-alt text-purple-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">Blocked Domains</p>
+                            <p class="text-lg font-semibold text-gray-900" id="blocked-domains">1000+</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Timer Quick Start -->
+                <div class="card rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-clock mr-2"></i>Quick Timer
+                    </h3>
+                    <p class="text-gray-600 mb-4">Start a commitment timer to lock your settings</p>
+                    <div class="flex items-center space-x-4">
+                        <select id="quick-timer-duration" class="border border-gray-300 rounded-md px-3 py-2">
+                            <option value="1">1 Hour</option>
+                            <option value="6">6 Hours</option>
+                            <option value="24">24 Hours</option>
+                            <option value="72">3 Days</option>
+                        </select>
+                        <button id="start-timer-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                            Start Timer
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Profile Download -->
+                <div class="card rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-download mr-2"></i>iOS Profile
+                    </h3>
+                    <p class="text-gray-600 mb-4">Download configuration profile for your devices</p>
+                    <div class="flex items-center space-x-4">
+                        <select id="profile-device" class="border border-gray-300 rounded-md px-3 py-2 flex-1">
+                            <option value="">Select Device</option>
+                        </select>
+                        <button id="download-profile-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">
+                            Download
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- New Supervision and Accountability Cards -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6" id="supervision-cards" style="display: none;">
+                <!-- Supervision Status Card -->
+                <div class="card rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-shield-alt mr-2 text-purple-600"></i>Device Supervision
+                    </h3>
+                    <p class="text-gray-600 mb-4">Enable unhackable protection for your devices</p>
+                    <div id="supervision-status" class="mb-4">
+                        <p class="text-sm text-gray-500">Loading supervision status...</p>
+                    </div>
+                    <a href="/supervision" class="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 inline-block">
+                        Manage Supervision
+                    </a>
+                </div>
+                
+                <!-- Accountability Partners Card -->
+                <div class="card rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">
+                        <i class="fas fa-user-friends mr-2 text-indigo-600"></i>Accountability Partners
+                    </h3>
+                    <p class="text-gray-600 mb-4">Add trusted people to support your journey</p>
+                    <div id="partners-count" class="mb-4">
+                        <p class="text-sm text-gray-500">Loading partners...</p>
+                    </div>
+                    <a href="/accountability" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 inline-block">
+                        Manage Partners
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Devices Section -->
+        <div id="devices-section" class="hidden max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div class="mb-8 flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-900">Device Management</h2>
+                    <p class="text-gray-600">Manage your iOS devices and configuration profiles</p>
+                </div>
+                <button id="add-device-btn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+                    <i class="fas fa-plus mr-2"></i>Add Device
+                </button>
+            </div>
+            
+            <div id="devices-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Devices will be loaded here -->
+            </div>
+        </div>
+
+        <!-- Blocking Settings Section -->
+        <div id="blocking-section" class="hidden max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Content Blocking</h2>
+                <p class="text-gray-600">Configure what content should be blocked on your devices</p>
+            </div>
+            
+            <div class="card rounded-lg shadow p-6">
+                <form id="blocking-form">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Content categories will be loaded here -->
+                        <div id="blocking-categories">
+                            <h3 class="text-lg font-semibold mb-4">Content Categories</h3>
+                            <!-- Categories loaded via JS -->
+                        </div>
+                        
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">Custom Domains</h3>
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Additional Blocked Domains</label>
+                                <textarea id="custom-blocked" rows="4" 
+                                         class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                         placeholder="example.com&#10;another-site.org"></textarea>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Always Allow Domains</label>
+                                <textarea id="custom-allowed" rows="4" 
+                                         class="w-full border border-gray-300 rounded-md px-3 py-2"
+                                         placeholder="work-site.com&#10;educational-resource.edu"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 flex justify-end">
+                        <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700">
+                            Save Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Timers Section -->
+        <div id="timers-section" class="hidden max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Timer Commitments</h2>
+                <p class="text-gray-600">Create unhackable commitment periods</p>
+            </div>
+            
+            <!-- Active Timer -->
+            <div id="active-timer-card" class="hidden card rounded-lg shadow p-6 mb-6 timer-active">
+                <h3 class="text-lg font-semibold text-red-600 mb-4">
+                    <i class="fas fa-lock mr-2"></i>Active Timer Commitment
+                </h3>
+                <div id="active-timer-content">
+                    <!-- Active timer details loaded here -->
+                </div>
+            </div>
+            
+            <!-- Create Timer -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div class="card rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Create New Timer</h3>
+                    <form id="timer-form">
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Duration</label>
+                            <select id="timer-duration" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="1">1 Hour</option>
+                                <option value="6">6 Hours</option>
+                                <option value="12">12 Hours</option>
+                                <option value="24">1 Day</option>
+                                <option value="72">3 Days</option>
+                                <option value="168">1 Week</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Device (Optional)</label>
+                            <select id="timer-device" class="w-full border border-gray-300 rounded-md px-3 py-2">
+                                <option value="">All Devices</option>
+                            </select>
+                        </div>
+                        
+                        <button type="submit" class="w-full bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700">
+                            <i class="fas fa-lock mr-2"></i>Start Timer Commitment
+                        </button>
+                    </form>
+                </div>
+                
+                <div class="card rounded-lg shadow p-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">Timer History</h3>
+                    <div id="timer-history">
+                        <!-- Timer history loaded here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Subscription Section -->
+        <div id="subscription-section" class="hidden max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-900">Subscription Management</h2>
+                <p class="text-gray-600">Manage your Altrii Recovery subscription</p>
+            </div>
+            
+            <div id="subscription-content">
+                <!-- Subscription details loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 flex items-center">
+            <div class="loading mr-3"></div>
+            <span>Loading...</span>
+        </div>
+    </div>
+
+    <!-- Add Device Modal -->
+    <div id="add-device-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h3 class="text-lg font-semibold mb-4">Add New Device</h3>
+            <form id="add-device-form">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Device Name</label>
+                    <input type="text" id="device-name" required
+                           class="w-full border border-gray-300 rounded-md px-3 py-2"
+                           placeholder="My iPhone">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Device Model (Optional)</label>
+                    <input type="text" id="device-model"
+                           class="w-full border border-gray-300 rounded-md px-3 py-2"
+                           placeholder="iPhone 15 Pro">
+                </div>
+                
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="cancel-add-device-btn" class="px-4 py-2 text-gray-600 hover:text-gray-800">Cancel</button>
+                    <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">Add Device</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

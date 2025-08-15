@@ -1,0 +1,495 @@
+const express = require('express');
+const { authenticateToken } = require('../middleware/auth');
+const {
+  generateProfile,
+  generateAllProfiles,
+  emailProfile,
+  buildBlockedDomainsList,
+  CORE_BLOCKED_DOMAINS
+} = require('../services/profile');
+const { getBlockingSettings } = require('../services/blocking');
+const { getUserDevices, getDeviceById } = require('../services/device');
+
+const router = express.Router();
+
+// Get profile generation info
+router.get('/info', (req, res) => {
+  res.json({
+    message: 'iOS Configuration Profile Generation',
+    features: [
+      'Content filtering with 1000+ blocked domains',
+      'Custom domain blocking and allowing',
+      'App restrictions based on categories',
+      'Safe search enforcement',
+      'Email delivery of profiles'
+    ],
+    supportedDevices: ['iOS 12.0+'],
+    profileFormat: '.mobileconfig (XML)',
+    totalCoreDomains: CORE_BLOCKED_DOMAINS.length,
+    categories: [
+      'Adult Content',
+      'Gambling', 
+      'Social Media',
+      'Gaming',
+      'News',
+      'Entertainment',
+      'Shopping',
+      'Dating'
+    ]
+  });
+});
+
+// Generate profile for specific device
+router.post('/generate/:deviceId', authenticateToken, async (req, res) => {
+  console.log('📱 Profile generation request for device:', req.params.deviceId);
+  
+  try {
+    const { deviceId } = req.params;
+    
+    if (!deviceId || isNaN(deviceId)) {
+      return res.status(400).json({
+        error: 'Invalid device ID',
+        message: 'Device ID must be a valid number'
+      });
+    }
+    
+    // Verify device belongs to user
+    const deviceResult = await getDeviceById(req.user.id, parseInt(deviceId));
+    if (!deviceResult.success) {
+      return res.status(404).json({
+        error: 'Device not found',
+        message: 'Device does not belong to user or does not exist'
+      });
+    }
+    
+    // Generate the profile
+    const result = await generateProfile(req.user.id, parseInt(deviceId));
+    
+    if (!result.success) {
+      return res.status(500).json({
+        error: 'Profile generation failed',
+        message: result.error
+      });
+    }
+    
+    console.log('✅ Profile generated successfully for device:', deviceId);
+    
+    res.json({
+      message: 'Profile generated successfully',
+      profile: {
+        deviceId: result.profile.deviceId,
+        deviceName: result.profile.deviceName,
+        profileUUID: result.profile.profileUUID,
+        profileName: result.profile.profileName,
+        blockedDomainsCount: result.profile.blockedDomainsCount,
+        settings: result.profile.settings
+      },
+      downloadEndpoint: `/api/profiles/download/${deviceId}`,
+      emailEndpoint: `/api/profiles/email/${deviceId}`,
+      installationGuide: '/api/profiles/installation-guide'
+    });
+    
+  } catch (error) {
+    console.error('❌ Profile generation error:', error.message);
+    res.status(500).json({
+      error: 'Profile generation failed',
+      message: error.message
+    });
+  }
+});
+
+// Download profile as .mobileconfig file
+router.get('/download/:deviceId', authenticateToken, async (req, res) => {
+  console.log('📱 Profile download request for device:', req.params.deviceId);
+  
+  try {
+    const { deviceId } = req.params;
+    
+    if (!deviceId || isNaN(deviceId)) {
+      return res.status(400).json({
+        error: 'Invalid device ID'
+      });
+    }
+    
+    // Verify device belongs to user
+    const deviceResult = await getDeviceById(req.user.id, parseInt(deviceId));
+    if (!deviceResult.success) {
+      return res.status(404).json({
+        error: 'Device not found'
+      });
+    }
+    
+    // Generate the profile
+    const result = await generateProfile(req.user.id, parseInt(deviceId));
+    
+    if (!result.success) {
+      return res.status(500).json({
+        error: 'Profile generation failed',
+        message: result.error
+      });
+    }
+    
+    const profile = result.profile;
+    
+    // Set appropriate headers for .mobileconfig download
+    const filename = `${profile.deviceName.replace(/[^a-zA-Z0-9]/g, '_')}_AltriRecovery.mobileconfig`;
+    
+    res.setHeader('Content-Type', 'application/x-apple-aspen-config');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', Buffer.byteLength(profile.profileXML, 'utf8'));
+    
+    console.log('✅ Profile download started for device:', deviceId);
+    
+    res.send(profile.profileXML);
+    
+  } catch (error) {
+    console.error('❌ Profile download error:', error.message);
+    res.status(500).json({
+      error: 'Profile download failed',
+      message: error.message
+    });
+  }
+});
+
+// Email profile to user
+router.post('/email/:deviceId', authenticateToken, async (req, res) => {
+  console.log('📧 Profile email request for device:', req.params.deviceId);
+  
+  try {
+    const { deviceId } = req.params;
+    const { email } = req.body;
+    
+    if (!deviceId || isNaN(deviceId)) {
+      return res.status(400).json({
+        error: 'Invalid device ID'
+      });
+    }
+    
+    // Use provided email or user's email
+    const targetEmail = email || req.user.email;
+    
+    if (!targetEmail) {
+      return res.status(400).json({
+        error: 'Email address required'
+      });
+    }
+    
+    // Verify device belongs to user
+    const deviceResult = await getDeviceById(req.user.id, parseInt(deviceId));
+    if (!deviceResult.success) {
+      return res.status(404).json({
+        error: 'Device not found'
+      });
+    }
+    
+    // Send profile via email
+    const result = await emailProfile(req.user.id, parseInt(deviceId), targetEmail);
+    
+    if (!result.success) {
+      return res.status(500).json({
+        error: 'Profile email failed',
+        message: result.error
+      });
+    }
+    
+    console.log('✅ Profile email sent for device:', deviceId);
+    
+    res.json({
+      message: 'Profile emailed successfully',
+      sentTo: targetEmail,
+      profile: result.profile
+    });
+    
+  } catch (error) {
+    console.error('❌ Profile email error:', error.message);
+    res.status(500).json({
+      error: 'Profile email failed',
+      message: error.message
+    });
+  }
+});
+
+// Generate profiles for all user devices
+router.post('/generate-all', authenticateToken, async (req, res) => {
+  console.log('📱 Bulk profile generation request for user:', req.user.id);
+  
+  try {
+    const result = await generateAllProfiles(req.user.id);
+    
+    if (!result.success) {
+      return res.status(500).json({
+        error: 'Bulk profile generation failed',
+        message: result.error
+      });
+    }
+    
+    console.log('✅ Bulk profile generation completed');
+    
+    res.json({
+      message: 'Bulk profile generation completed',
+      summary: result.summary,
+      profiles: result.profiles.map(profile => ({
+        deviceId: profile.deviceId,
+        deviceName: profile.deviceName,
+        profileName: profile.profileName,
+        blockedDomainsCount: profile.blockedDomainsCount,
+        downloadUrl: `/api/profiles/download/${profile.deviceId}`
+      })),
+      errors: result.errors
+    });
+    
+  } catch (error) {
+    console.error('❌ Bulk profile generation error:', error.message);
+    res.status(500).json({
+      error: 'Bulk profile generation failed',
+      message: error.message
+    });
+  }
+});
+
+// Get installation guide
+router.get('/installation-guide', (req, res) => {
+  res.json({
+    message: 'iOS Configuration Profile Installation Guide',
+    steps: [
+      {
+        step: 1,
+        title: 'Download Profile',
+        description: 'Download the .mobileconfig file to your iOS device',
+        methods: [
+          'Use the download link from your email',
+          'Download directly from the Altrii Recovery dashboard',
+          'Transfer via AirDrop from another device'
+        ]
+      },
+      {
+        step: 2,
+        title: 'Open Profile',
+        description: 'Tap the downloaded .mobileconfig file to open it',
+        note: 'iOS will automatically recognize the file type'
+      },
+      {
+        step: 3,
+        title: 'Install Profile',
+        description: 'Follow the iOS prompts to install the configuration profile',
+        details: [
+          'Tap "Install" when prompted',
+          'Enter your device passcode if required',
+          'Tap "Install" again to confirm',
+          'Tap "Done" when installation completes'
+        ]
+      },
+      {
+        step: 4,
+        title: 'Verify Installation',
+        description: 'Check that the profile is properly installed',
+        instructions: [
+          'Go to Settings > General > VPN & Device Management',
+          'Look for "Altrii Recovery" under Configuration Profiles',
+          'Tap the profile to view details and status'
+        ]
+      },
+      {
+        step: 5,
+        title: 'Test Blocking',
+        description: 'Verify that content blocking is working',
+        testSites: [
+          'Try visiting a blocked website',
+          'Check that restricted apps are limited',
+          'Verify safe search is enabled'
+        ]
+      }
+    ],
+    troubleshooting: [
+      {
+        issue: 'Profile won\'t install',
+        solutions: [
+          'Restart your device and try again',
+          'Check that you have iOS 12.0 or later',
+          'Remove any existing Altrii Recovery profiles first'
+        ]
+      },
+      {
+        issue: 'Blocking not working',
+        solutions: [
+          'Wait up to 5 minutes for settings to take effect',
+          'Restart Safari or your browser',
+          'Check that the profile shows as "Verified" in settings'
+        ]
+      },
+      {
+        issue: 'Can\'t remove profile',
+        solutions: [
+          'Contact Altrii Recovery support',
+          'Check if a timer commitment is active',
+          'Use the removal code if provided'
+        ]
+      }
+    ],
+    support: {
+      email: 'support@altriirecovery.com',
+      documentation: 'https://altriirecovery.com/docs/installation',
+      videoGuide: 'https://altriirecovery.com/videos/ios-installation'
+    }
+  });
+});
+
+// Preview blocked domains for device
+router.get('/preview/:deviceId', authenticateToken, async (req, res) => {
+  console.log('👀 Profile preview request for device:', req.params.deviceId);
+  
+  try {
+    const { deviceId } = req.params;
+    
+    if (!deviceId || isNaN(deviceId)) {
+      return res.status(400).json({
+        error: 'Invalid device ID'
+      });
+    }
+    
+    // Verify device belongs to user
+    const deviceResult = await getDeviceById(req.user.id, parseInt(deviceId));
+    if (!deviceResult.success) {
+      return res.status(404).json({
+        error: 'Device not found'
+      });
+    }
+    
+    // Get blocking settings
+    const settingsResult = await getBlockingSettings(req.user.id, parseInt(deviceId));
+    if (!settingsResult.success) {
+      return res.status(500).json({
+        error: 'Failed to get blocking settings'
+      });
+    }
+    
+    // Build blocked domains list
+    const blockedDomains = buildBlockedDomainsList(settingsResult.settings);
+    
+    // Categorize domains for preview
+    const categorizedDomains = {
+      adultContent: blockedDomains.filter(d => 
+        ['pornhub.com', 'xvideos.com', 'xnxx.com', 'redtube.com', 'youporn.com'].includes(d)
+      ),
+      gambling: blockedDomains.filter(d => 
+        ['bet365.com', 'ladbrokes.com', 'williamhill.com', 'paddypower.com'].includes(d)
+      ),
+      socialMedia: blockedDomains.filter(d => 
+        ['facebook.com', 'instagram.com', 'tiktok.com', 'twitter.com', 'x.com'].includes(d)
+      ),
+      gaming: blockedDomains.filter(d => 
+        ['steam.com', 'twitch.tv', 'roblox.com', 'minecraft.net', 'epicgames.com'].includes(d)
+      ),
+      custom: settingsResult.settings.customBlockedDomains || []
+    };
+    
+    res.json({
+      message: 'Profile preview generated',
+      device: {
+        id: deviceResult.device.id,
+        name: deviceResult.device.deviceName,
+        profileName: deviceResult.device.profileName
+      },
+      summary: {
+        totalBlockedDomains: blockedDomains.length,
+        categoriesBlocked: Object.entries(settingsResult.settings)
+          .filter(([key, value]) => key.startsWith('block') && value)
+          .map(([key]) => key.replace('block', '')),
+        customBlockedDomains: settingsResult.settings.customBlockedDomains?.length || 0,
+        customAllowedDomains: settingsResult.settings.customAllowedDomains?.length || 0
+      },
+      blockedDomains: {
+        total: blockedDomains.length,
+        byCategory: categorizedDomains,
+        sampleDomains: blockedDomains.slice(0, 20) // First 20 for preview
+      },
+      allowedDomains: settingsResult.settings.customAllowedDomains || [],
+      restrictions: {
+        safeSearchEnabled: settingsResult.settings.enableSafeSearch,
+        explicitContentBlocked: settingsResult.settings.blockExplicitContent,
+        timeRestrictionsEnabled: settingsResult.settings.enableTimeRestrictions
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Profile preview error:', error.message);
+    res.status(500).json({
+      error: 'Profile preview failed',
+      message: error.message
+    });
+  }
+});
+
+// Test profile generation with sample device
+router.get('/test/generate-sample', authenticateToken, async (req, res) => {
+  console.log('🧪 Test profile generation for user:', req.user.id);
+  
+  try {
+    // Get user's first iOS device
+    const devicesResult = await getUserDevices(req.user.id);
+    
+    if (!devicesResult.success || devicesResult.devices.length === 0) {
+      return res.status(404).json({
+        status: '❌ NO DEVICES',
+        message: 'No devices found for user',
+        suggestion: 'Register a device first using /api/devices/test/register-sample'
+      });
+    }
+    
+    const iosDevices = devicesResult.devices.filter(d => d.deviceType === 'ios');
+    
+    if (iosDevices.length === 0) {
+      return res.status(404).json({
+        status: '❌ NO IOS DEVICES',
+        message: 'No iOS devices found for user',
+        devices: devicesResult.devices.map(d => ({ id: d.id, name: d.deviceName, type: d.deviceType }))
+      });
+    }
+    
+    const testDevice = iosDevices[0];
+    
+    // Generate profile for first iOS device
+    const result = await generateProfile(req.user.id, testDevice.id);
+    
+    if (!result.success) {
+      return res.status(500).json({
+        status: '❌ GENERATION FAILED',
+        error: result.error,
+        device: testDevice
+      });
+    }
+    
+    res.json({
+      status: '✅ SUCCESS',
+      message: 'Test profile generated successfully',
+      device: {
+        id: testDevice.id,
+        name: testDevice.deviceName,
+        type: testDevice.deviceType
+      },
+      profile: {
+        name: result.profile.profileName,
+        uuid: result.profile.profileUUID,
+        blockedDomains: result.profile.blockedDomainsCount,
+        xmlSize: Buffer.byteLength(result.profile.profileXML, 'utf8')
+      },
+      settings: result.profile.settings,
+      nextSteps: [
+        `Download: GET /api/profiles/download/${testDevice.id}`,
+        `Preview: GET /api/profiles/preview/${testDevice.id}`,
+        `Email: POST /api/profiles/email/${testDevice.id}`,
+        'Installation guide: GET /api/profiles/installation-guide'
+      ]
+    });
+    
+  } catch (error) {
+    console.error('❌ Test profile generation error:', error.message);
+    res.status(500).json({
+      status: '❌ FAILED',
+      error: 'Test profile generation failed',
+      message: error.message
+    });
+  }
+});
+
+module.exports = router;
